@@ -17,10 +17,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # Load in the needed CMake modules
 include(CheckIncludeFiles)
-include(CheckCCompilerFlag)
-include(CheckCXXCompilerFlag)
-include(AddCCompilerFlag)
-include(AddCXXCompilerFlag)
 include(DetermineTargetArchitecture)
 include(CMakeDependentOption)
 
@@ -93,10 +89,6 @@ message(STATUS "Server statistics support - ${CIVETWEB_ENABLE_SERVER_STATS}")
 option(CIVETWEB_ENABLE_MEMORY_DEBUGGING "Enable the memory debugging features" OFF)
 message(STATUS "Memory Debugging - ${CIVETWEB_ENABLE_MEMORY_DEBUGGING}")
 
-# ASAN in debug mode (-fsanitize=address, etc)
-option(CIVETWEB_ENABLE_ASAN "Enable ASAN in debug mode" ON)
-message(STATUS "ASAN in debug mode - ${CIVETWEB_ENABLE_ASAN}")
-
 # ARCH flag
 option(CIVETWEB_ARCH "Force 32/64 bit architecture" OFF)
 message(STATUS "Force x32 / x64 architecture - ${CIVETWEB_ARCH}")
@@ -109,22 +101,6 @@ message(STATUS "Lua CGI support - ${CIVETWEB_ENABLE_LUA}")
 option(CIVETWEB_INSTALL_EXECUTABLE "Enable installing CivetWeb executable" OFF)
 mark_as_advanced(FORCE CIVETWEB_INSTALL_EXECUTABLE) # Advanced users can disable
 message(STATUS "Executable installation - ${CIVETWEB_INSTALL_EXECUTABLE}")
-
-# Allow builds to complete with warnings (do not set -Werror)
-# CivetWeb Linux support is stable:
-# Builds for GCC 4.6 and clang 3.4 are free from warnings.
-# However, GCC introduced a couple of new, partially idiotic warnings,
-# that can not be disabled using a #pragma directive.
-# It seems unreasonable to have all GCC versions warning free, but only
-# some selected ones.
-option(CIVETWEB_ALLOW_WARNINGS "Do not stop build if there are warnings" ON)
-message(STATUS "Build if there are warnings - ${CIVETWEB_ALLOW_WARNINGS}")
-
-if (NOT CIVETWEB_ALLOW_WARNINGS)
-  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    message(FATAL_ERROR "Cannot compile with warning as errors, until this GCC bug is solved: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=53431")
-  endif()
-endif()
 
 # Link to the shared LUA library
 cmake_dependent_option(
@@ -244,11 +220,6 @@ if (CIVETWEB_ENABLE_SSL_DYNAMIC_LOADING AND NOT DARWIN AND UNIX)
   message(STATUS "SSL Cryptography Library Name - ${CIVETWEB_SSL_CRYPTO_LIB}")
 endif()
 
-# Allow warnings in 3rd party components
-if (CIVETWEB_ENABLE_LUA OR CIVETWEB_ENABLE_DUKTAPE)
-SET(CIVETWEB_ALLOW_WARNINGS YES)
-endif()
-
 # The C and C++ standards to use
 set(CIVETWEB_C_STANDARD auto CACHE STRING
   "The C standard to use; auto determines the latest supported by the compiler")
@@ -269,142 +240,7 @@ if ("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
   endif()
 endif()
 
-# Configure the C compiler
-message(STATUS "Configuring C Compiler")
-if ("${CIVETWEB_C_STANDARD}" STREQUAL "auto")
-  add_c_compiler_flag(-std=c11)
-  if (NOT HAVE_C_FLAG_STD_C11)
-    add_c_compiler_flag(-std=c99)
-    if (NOT HAVE_C_FLAG_STD_C99)
-      add_c_compiler_flag(-std=c89)
-    endif()
-  endif()
-else()
-  add_c_compiler_flag(-std=${CIVETWEB_C_STANDARD})
-endif()
-
-#Warnings: enable everything
-add_c_compiler_flag(-Wall)
-add_c_compiler_flag(-Wextra)
-add_c_compiler_flag(-Wshadow)
-add_c_compiler_flag(-Wconversion)
-add_c_compiler_flag(-Wmissing-prototypes)
-add_c_compiler_flag(-Weverything)
-add_c_compiler_flag(-Wparentheses)
-add_c_compiler_flag(/W4) # VisualStudio highest warning level
-
-#Warnings: Disable some warnings
-add_c_compiler_flag(-Wno-padded) # padding in structures by compiler
-add_c_compiler_flag(-Wno-unused-macros) # so what?
-add_c_compiler_flag(-Wno-reserved-id-macros) # for system headers
-add_c_compiler_flag(-Wno-format-nonliteral) # printf(myFormatStringVar, ...)
-add_c_compiler_flag(-Wno-date-time) # using __DATE__ once
-add_c_compiler_flag(-Wno-cast-qual) # const cast
-add_c_compiler_flag(/Wd4820) # padding
-
-if (MINGW)
-  add_c_compiler_flag(-Wno-format)
-endif()
-if (NOT CIVETWEB_ALLOW_WARNINGS)
-  add_c_compiler_flag(-Werror)
-endif()
-add_c_compiler_flag(/WX)
-add_c_compiler_flag(-pedantic-errors)
-add_c_compiler_flag(-fvisibility=hidden)
-add_c_compiler_flag(-fstack-protector-strong RELEASE)
-add_c_compiler_flag(-flto RELEASE)
-if (${CIVETWEB_ENABLE_ASAN})
-add_c_compiler_flag(-fsanitize=undefined DEBUG)
-add_c_compiler_flag(-fsanitize=address DEBUG)
-if (HAVE_C_FLAG_FSANITIZE_ADDRESS)
-  add_c_compiler_flag(-static-asan DEBUG)
-endif()
-endif()
-add_c_compiler_flag(-fstack-protector-all DEBUG)
-if (MINGW)
-  add_c_compiler_flag(-mwindows)
-endif()
-
-# Coverage build type
-set(CMAKE_C_FLAGS_COVERAGE "${CMAKE_C_FLAGS_DEBUG}" CACHE STRING
-    "Flags used by the C compiler during coverage builds."
-    FORCE)
-set(CMAKE_EXE_LINKER_FLAGS_COVERAGE
-    "${CMAKE_EXE_LINKER_FLAGS_DEBUG}" CACHE STRING
-    "Flags used for linking binaries during coverage builds."
-    FORCE)
-set(CMAKE_SHARED_LINKER_FLAGS_COVERAGE
-    "${CMAKE_SHARED_LINKER_FLAGS_DEBUG}" CACHE STRING
-    "Flags used by the shared libraries linker during coverage builds."
-    FORCE)
-mark_as_advanced(
-    CMAKE_CXX_FLAGS_COVERAGE
-    CMAKE_C_FLAGS_COVERAGE
-    CMAKE_EXE_LINKER_FLAGS_COVERAGE
-    CMAKE_SHARED_LINKER_FLAGS_COVERAGE)
-set(CMAKE_BUILD_TYPE "${CMAKE_BUILD_TYPE}" CACHE STRING
-    "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel Coverage."
-    FORCE)
-add_c_compiler_flag(--coverage COVERAGE)
-
-# Configure the C++ compiler
-if (CIVETWEB_ENABLE_CXX)
-  message(STATUS "Configuring C++ Compiler")
-  if ("${CIVETWEB_CXX_STANDARD}" STREQUAL "auto")
-    add_cxx_compiler_flag(-std=c++14)
-    if (NOT HAVE_CXX_FLAG_STD_CXX14)
-      add_cxx_compiler_flag(-std=c++11)
-      if (NOT HAVE_CXX_FLAG_STD_CXX11)
-        add_cxx_compiler_flag(-std=c++98)
-      endif()
-    endif()
-  else()
-    add_cxx_compiler_flag(-std=${CIVETWEB_CXX_STANDARD})
-  endif()
-  add_cxx_compiler_flag(-Wall)
-  add_cxx_compiler_flag(-Wextra)
-  add_cxx_compiler_flag(-Wshadow)
-  add_cxx_compiler_flag(-Wmissing-prototypes)
-  add_cxx_compiler_flag(-Weverything)
-  add_cxx_compiler_flag(/W4)
-  add_cxx_compiler_flag(-Wno-padded)
-  add_cxx_compiler_flag(/Wd4820) # padding
-  add_cxx_compiler_flag(-Wno-unused-macros)
-  add_cxx_compiler_flag(-Wno-format-nonliteral)
-  if (MINGW)
-    add_cxx_compiler_flag(-Wno-format)
-  endif()
-  if (NOT CIVETWEB_ALLOW_WARNINGS)
-    add_cxx_compiler_flag(-Werror)
-  endif()
-  add_cxx_compiler_flag(/WX)
-  add_cxx_compiler_flag(-pedantic-errors)
-  add_cxx_compiler_flag(-fvisibility=hidden)
-  add_cxx_compiler_flag(-fstack-protector-strong RELEASE)
-  add_cxx_compiler_flag(-flto RELEASE)
-  if (${CIVETWEB_ENABLE_ASAN})
-  add_cxx_compiler_flag(-fsanitize=undefined DEBUG)
-  add_cxx_compiler_flag(-fsanitize=address DEBUG)
-  if (HAVE_CXX_FLAG_FSANITIZE_ADDRESS)
-    add_cxx_compiler_flag(-static-asan DEBUG)
-  endif()
-  endif()
-  add_cxx_compiler_flag(-fstack-protector-all DEBUG)
-  if (MINGW)
-    add_cxx_compiler_flag(-mwindows)
-  endif()
-  set(CMAKE_CXX_FLAGS_COVERAGE "${CMAKE_CXX_FLAGS_DEBUG}" CACHE STRING
-      "Flags used by the C++ compiler during coverage builds."
-      FORCE)
-  add_cxx_compiler_flag(--coverage COVERAGE)
-endif()
-
 # Set up the definitions
-if (${CMAKE_BUILD_TYPE} MATCHES "[Dd]ebug")
-  add_definitions(-DDEBUG)
-  add_definitions(-O0)
-  add_definitions(-g)
-endif()
 if (CIVETWEB_ENABLE_IPV6)
   add_definitions(-DUSE_IPV6)
 endif()
